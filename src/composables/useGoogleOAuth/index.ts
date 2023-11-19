@@ -1,17 +1,13 @@
-import { reactive, ref } from "vue";
+import { ref } from "vue";
+import type * as types from "./types";
 import config from "./config";
-import {
-  Configuration,
-  CredentialPopupResponse,
-  Google,
-  PromptNotification,
-} from "./types";
 
+declare global {
+  interface Window extends types._Window {}
+}
+
+const isGoogleApiLoaded = ref(false);
 const clientId = ref("");
-const libraryState = reactive({
-  apiLoaded: false,
-  apiLoadIntitited: false,
-});
 
 export function useGoogleOAuth() {
   const init = (client_id: string) => {
@@ -22,7 +18,7 @@ export function useGoogleOAuth() {
     loadGoogleApi.then(() => {
       if (!client_id) return;
 
-      const config: Configuration = {
+      const config: types.Configuration = {
         client_id,
       };
 
@@ -31,27 +27,17 @@ export function useGoogleOAuth() {
     });
   };
 
-  const googleSdkLoaded = (callback: () => void) => {
-    if (libraryState.apiLoaded) {
-      callback();
-      return;
-    }
-    loadGoogleApi.then(() => {
-      callback();
-    });
-  };
-
   const googleOneTap = (
     client_id?: string
-  ): Promise<CredentialPopupResponse> => {
+  ): Promise<types.CredentialPopupResponse> => {
     if (client_id) clientId.value = client_id;
 
     if (!clientId.value) throw new Error("Client ID is required!");
 
     return new Promise((resolve, reject) => {
-      const config: Configuration = {
+      const config: types.Configuration = {
         client_id: clientId.value,
-        callback: (response: CredentialPopupResponse) => {
+        callback: (response: types.CredentialPopupResponse) => {
           if (response.credential) resolve(response);
 
           reject(response);
@@ -60,31 +46,16 @@ export function useGoogleOAuth() {
 
       googleSdkLoaded(() => {
         window.google.accounts.id.initialize(config);
-        window.google.accounts.id.prompt((notification: PromptNotification) => {
-          handlePromptError(notification);
-        });
+        window.google.accounts.id.prompt(
+          (notification: types.PromptNotification) => {
+            handlePromptError(notification);
+          }
+        );
       });
     });
   };
 
-  const loadGoogleApi = new Promise<Google>((resolve) => {
-    const isRunningInBrowser = typeof window !== "undefined";
-
-    if (!(!libraryState.apiLoadIntitited && isRunningInBrowser)) return;
-
-    const script = document.createElement("script");
-    libraryState.apiLoadIntitited = true;
-    script.addEventListener("load", () => {
-      libraryState.apiLoaded = true;
-      resolve(window.google);
-    });
-    script.src = config.library;
-    script.async = true;
-    script.defer = true;
-    document.head.appendChild(script);
-  });
-
-  const handlePromptError = (notification: PromptNotification) => {
+  const handlePromptError = (notification: types.PromptNotification) => {
     let errorMessage: string = "";
     if (notification.isNotDisplayed()) {
       if (notification.getNotDisplayedReason() === "suppressed_by_user") {
@@ -97,8 +68,38 @@ export function useGoogleOAuth() {
       errorMessage = `Prompt was skipped, reason for skipping: ${notification.getSkippedReason()}`;
     }
 
-    console.error(errorMessage);
+    if (errorMessage) console.error("handlePromptError: " + errorMessage);
   };
 
-  return { init, googleOneTap };
+  const loadGoogleApi = new Promise<types.Google>((resolve) => {
+    const isRunningInBrowser = typeof window !== "undefined";
+
+    if (!(!isGoogleApiLoaded.value && isRunningInBrowser)) return;
+
+    const script = document.createElement("script");
+    script.addEventListener("load", () => {
+      isGoogleApiLoaded.value = true;
+      resolve(window.google);
+    });
+    script.src = config.library;
+    script.async = true;
+    script.defer = true;
+    document.head.appendChild(script);
+  });
+
+  const googleSdkLoaded = (callback: () => void) => {
+    if (isGoogleApiLoaded.value) {
+      callback();
+      return;
+    }
+    loadGoogleApi.then(() => callback());
+  };
+
+  return {
+    isGoogleApiLoaded,
+    init,
+    googleOneTap,
+    googleSdkLoaded,
+    loadGoogleApi,
+  };
 }

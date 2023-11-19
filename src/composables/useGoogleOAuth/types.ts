@@ -7,6 +7,10 @@ import {
 export type ClientId = string | null;
 export type Context = "signin" | "signup" | "use";
 
+export interface _Window {
+  google: Google;
+}
+
 export interface Configuration {
   /**Your Google API client ID */
   client_id?: ClientId;
